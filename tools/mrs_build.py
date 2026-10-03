@@ -35,6 +35,7 @@ class BuildConfig:
     name: str
     project_dir: str
     defines: list = field(default_factory=list)
+    asm_defines: list = field(default_factory=list)
     includes: list = field(default_factory=list)
     sources: list = field(default_factory=list)
     libs: list = field(default_factory=list)
@@ -132,6 +133,7 @@ def parse_cproject(project_dir):
     o = _options(cfg_elem)
     cfg = BuildConfig(name=name, project_dir=project_dir)
     cfg.defines = list(_list(o, "c.compiler.defs"))
+    cfg.asm_defines = list(_list(o, "assembler.defs"))
     cfg.includes = [_resolve(project_dir, v) for v in _list(o, "c.compiler.include.paths")]
     cfg.sources = _sources(project_dir, cfg_elem)
     cfg.libs = list(_list(o, "c.linker.libs"))
@@ -196,7 +198,7 @@ def build(cfg, out_dir, toolchain, extra_defines):
         obj = os.path.join(out_dir, os.path.splitext(rel)[0] + ".o")
         os.makedirs(os.path.dirname(obj), exist_ok=True)
         if src.endswith(".S"):
-            extra = ["-x", "assembler-with-cpp"] + inc
+            extra = ["-x", "assembler-with-cpp"] + [f"-D{d}" for d in cfg.asm_defines] + inc
         else:
             extra = defs + inc + ([cfg.c_std] if cfg.c_std else [])
         _run([tool("gcc")] + cfg.compile_flags + extra + ["-c", src, "-o", obj])

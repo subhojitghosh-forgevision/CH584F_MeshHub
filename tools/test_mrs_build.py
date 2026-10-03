@@ -43,6 +43,19 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(cfg.libs, ["ISP585", "CH58xBLE"])
 
 
+class AssemblerDefineTests(unittest.TestCase):
+    """Assembly files get the .cproject assembler defines (assembler.defs), not the C defines."""
+
+    def test_reads_assembler_defines(self):
+        sdk_node = (r"C:\Embedded\WCH\SDK\CH585EVT\EVT\EXAM\BLE\MESH"
+                    r"\adv_vendor_self_provision_with_peripheral")
+        self.assertEqual(mrs_build.parse_cproject(sdk_node).asm_defines,
+                         ["LIB_FLASH_BASE_ADDRESSS=0x0004E000"])
+
+    def test_projects_without_assembler_defines_get_none(self):
+        self.assertEqual(mrs_build.parse_cproject(RELAY).asm_defines, [])
+
+
 class RegressionTests(unittest.TestCase):
     """The tool must reproduce hex files that were built and verified on 2026-10-03."""
 
