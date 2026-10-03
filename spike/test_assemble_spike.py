@@ -57,5 +57,51 @@ class AssembleBoardTests(unittest.TestCase):
             assemble_spike.assemble(self.dest)
 
 
+class ForceReassemblyTests(unittest.TestCase):
+    """--force must replace an earlier copy even though some SDK files are read-only."""
+
+    def test_force_reassembles_over_existing_copy(self):
+        dest = tempfile.mkdtemp(prefix="spike_force_test_")
+        try:
+            assemble_spike.assemble(dest)
+            dirs = assemble_spike.assemble(dest, force=True)
+            self.assertTrue(os.path.isfile(os.path.join(dirs["node"], "HAL", "include", "CONFIG.h")))
+        finally:
+            shutil.rmtree(dest, onexc=assemble_spike.force_remove)
+
+
+class SpikeFeatureTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.dest = tempfile.mkdtemp(prefix="spike_feat_test_")
+        cls.node = assemble_spike.assemble(cls.dest)["node"]
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.dest, ignore_errors=True)
+
+    def test_mesh_config_enables_pb_gatt_proxy_and_spec_sizes(self):
+        cfg = read(os.path.join(self.node, "APP", "include", "app_mesh_config.h"))
+        self.assertRegex(cfg, r"#define CONFIG_BLE_MESH_PROXY\s+1\b")
+        self.assertRegex(cfg, r"#define CONFIG_BLE_MESH_PB_GATT\s+1\b")
+        self.assertRegex(cfg, r"#define CONFIG_MESH_UNSEG_LENGTH_DEF\s+\(7\)")
+        self.assertRegex(cfg, r"#define CONFIG_MESH_RX_SDU_DEF\s+\(256\)")
+
+    def test_app_uses_static_oob_and_skips_custom_peripheral(self):
+        app = read(os.path.join(self.node, "APP", "app.c"))
+        self.assertIn(".static_val = spike_static_oob,", app)
+        self.assertIn(".static_val_len = sizeof(spike_static_oob),", app)
+        self.assertIn("0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF", app)
+        self.assertNotIn("    GAPRole_PeripheralInit();\n    Peripheral_Init();", app)
+        self.assertIn("spike_boot_blink(SPIKE_VERSION);", app)
+        self.assertIn("if(events & SPIKE_PUB_EVT)", app)
+        self.assertIn("tmos_start_task(App_TaskID, SPIKE_PUB_EVT, SPIKE_PUB_PERIOD);", app)
+        self.assertIn("// SPIKE: unicast commands arrive as acknowledged WRT", app)
+
+    def test_peripheral_entry_points_are_guarded(self):
+        per = read(os.path.join(self.node, "APP", "peripheral.c"))
+        self.assertEqual(per.count("    return; // SPIKE: custom peripheral not started"), 3)
+
+
 if __name__ == "__main__":
     unittest.main()
