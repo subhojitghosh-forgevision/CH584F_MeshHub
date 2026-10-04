@@ -22,6 +22,7 @@
 | GATT services | PASS | 0x1800 GAP, 0x1801 GATT, 0x1827 Mesh Provisioning with Data In 0x2ADB (write-without-response) and Data Out 0x2ADC (notify) |
 | Provisioning Capabilities (Invite sent over PB-GATT) | PASS | 03010100010001000000000000: 1 element, algorithms 0x0001 (P-256), no OOB public key, Static OOB AVAILABLE, no output/input OOB |
 | Re-advertising after an abandoned provisioning link | PASS | unprovisioned 0x1827 advertising again within ~6 s |
+| Unprovisioned advertising after node reset (prov_reset -> prov_enable fix) | PASS (cause to confirm) | 15:49 not advertising (phone held the proxy link); 15:51:43-15:52:19 provisioned proxy 0x1828 adverts, alternating with gaps (phone reconnecting); 15:52:25 unprovisioned 0x1827, device UUID 3e7ab5506c5400000000000000000000, OOB info 0000, RSSI -49 dBm. Expected after nRF Mesh 'Reset Node' (Config Node Reset); the reset itself is not yet confirmed by the user. |
 
 ## Security finding (2026-10-04)
 
