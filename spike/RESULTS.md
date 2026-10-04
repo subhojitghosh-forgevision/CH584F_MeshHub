@@ -4,8 +4,8 @@
 |---|---|---|
 | S1 build | PASS | node flash/RAM: v1 96,664 B / 15,484 B (152 KB slot, 76 KB RAM region), v2 96,720 B; stack 0x20018000; IAP 2,436 B at 0x4D000 (stack 0x20018000); JumpIAP 4 B = j 0x4d000; ROM lib CH584BLE_ROM_MESH.hex 128,704 B at 0x4E000-0x6D6C3 |
 | T1 | PASS | Laptop BLE scan (bleak): 54:6C:50:B5:7A:3E (= chip UID 3E-7A-B5-50-6C-54 reversed) advertises Mesh Provisioning 0x1827, device UUID 3e7ab5506c5400000000000000000000, OOB info 0000, RSSI -52..-69 dBm. LED blinked once at power-up (user). nRF Mesh scan was empty before the reflash: phone-side, re-check with Location on. |
-| T2 | | |
-| T3 | | |
+| T2 | PASS | Wrong static OOB FFEEDDCC...1100: invite, capabilities, start, public keys exchanged, then 'Provisioning failed received' - nRF Mesh dialog 'Provisioning Failed: Prohibited' (failed error code 0x00, not the spec's 0x04 Confirmation Failed). Board was available again and provisioned in T3. |
+| T3 | PASS | Correct static OOB 0011...EEFF: confirmation, provisioning data, 'Provisioning complete received', composition data get/status, default TTL get/status, 'Configuration Complete - Mesh node has been successfully configured.' Board then stopped advertising to the laptop (phone holds the proxy connection). |
 | T4 | | |
 | T5 | | |
 | T6 | | |
