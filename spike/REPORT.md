@@ -22,14 +22,14 @@ Every observation, with exact bytes, is in `spike/RESULTS.md`. Findings F1–F3 
 | T7 = S4 | PARTIAL in nRF Mesh, PASS via laptop | nRF Mesh cannot display unsolicited vendor messages (N2). A laptop proxy client receives a READING to `0xC001` every 5 s through the GATT proxy, with NetMIC and TransMIC verified. |
 | T8 = S5 install | PASS | WRT `02 A9 0400` (OTA end): the LED blinks 3 times (v2) and the board still advertises `0x1828` on the same network. |
 | T9 | PASS | After the install, ask-status returns `CB 03` and `93 84 0400 00`. The network SEQ continued and was not reset. |
-| T10 | PASS | Image info returns size `0x26000` and block `0x1000`. Chip ID is `0x93` (CH585), which is wrong for a CH584 (`0x92`). |
+| T10 | PASS | Image info returns size `0x26000` and block `0x1000`. `0xA6` also **erases the update buffer** (A13), so this was safe only because it ran after T8. Chip ID is `0x93` (CH585), which is wrong for a CH584 (`0x92`). |
 | T11 | PASS | After a power cycle the board is back on `0x1828` on the same network and returns `CB 05` and `84 84 0400 00`. |
 | S6 | API available, untested | `bt_mesh_proxy_set_adv_rsp(u8_t *data, u8_t len)` (scan response, at most 31 bytes) is in `MESH_LIB.h:3262` and in both libraries. No SDK example calls it. |
 
 ## Go / no-go
 
 - **Firmware sub-project (step 1, needs S1–S4): GO.** S1, T2 (rejected), T3, T5 and T6 pass. T7 is PARTIAL in nRF Mesh and PASS through a laptop proxy client. Amendments A5 (F2) and A9 (F3) are preconditions.
-- **OTA sub-project (step 3, needs S5): GO.** T8–T11 pass.
+- **OTA sub-project (step 3, needs S5): GO.** T8–T11 pass. The WCH OTA handler must be hardened first (A13, A14).
   - **Scope:** the spike installed an image that was already in the update buffer, using the end command `0xA9`.
   - **Not exercised:** the block transfer (`0xA7` write, `0xA8` verify) and its throughput over the mesh. That is the first task of the OTA sub-project.
 
@@ -48,6 +48,16 @@ Every observation, with exact bytes, is in `spike/RESULTS.md`. Findings F1–F3 
 | A9 | 8.2 (`mesh/`) | **F3:** MESH_LIB V1.79 encrypts proxy configuration with the **network nonce**, not the Proxy nonce (Mesh Profile 3.8.5.4). The current Nordic library sends with the Proxy nonce, so its proxy-filter requests would be ignored and `0xC001` READINGs would not reach the hub. nRF Mesh (Old) did get a filter status, so its bundled library differs. **The app sub-project tests this first**, then either patches the library to use the network nonce for proxy configuration, or has boards also address READINGs to the hub's unicast address. Separately, unsolicited vendor messages arrive in `MeshStatusCallbacks.onUnknownPduReceived(src, accessPayload)` (N2). | T7, laptop checks, F3 |
 | A10 | 6.5 | S6: the API exists, so the firmware sub-project tries putting the name in the proxy scan response. INFO remains the source of truth. | S6 desk check |
 | A11 | 13 | **Close:** "CH584 RAM" (S1 PASS), "Nordic ↔ WCH vendor interop" (S3 PASS) and "OTA service alongside proxy" (replaced by OTA over the mesh). **Add:** F1 no-OOB claim, F3 proxy-configuration nonce, and OTA block-transfer throughput. | all |
+
+## Final review additions (proposed, awaiting approval)
+
+The whole-branch review found three problems that amendments A1–A11 miss.
+
+| # | Spec section | Amendment | Source |
+|---|---|---|---|
+| A12 | 4.1, 4.2, 8.2 | **A CFM confirms receipt, not execution.** The server confirms a duplicate (same TID and source) without running it, and keeps only the last (TID, source) pair, in RAM. So the app persists its TID counter per network, or starts each session at a random TID, and a restart never repeats the last TID. The app drops the board's repeated copies by (source, server TID) within a 3 s window; the window is short so that a board's server TID restarting after a reboot is not mistaken for a duplicate. | T6, `vendor_message_srv_write` |
+| A13 | 7, 13 | **`0xA6` is OTA *begin*:** it erases the whole update buffer before replying (`app.c:1184`). `0xA9` after `0xA6` without a fully written and verified image makes the IAP install an erased image, because it copies without checks (`iap/APP/app_main.c:72-76`). The device is then dead until a USB reflash. The OTA sub-project adds a device-side length and CRC check before `0xA9` switches the image flag, and the app sends `0xA9` only after a passing verify. | T10, code |
+| A14 | 4.2, 6.4, 7, 13 | **WCH's `App_trans_model_reveived` is not memory-safe.** It copies the whole message into an 88-byte buffer without a length check (`app.c:1034`), so a message close to the 256-byte RX SDU overwrites the mesh heap. `0xA7`/`0xA8` have no address-range check and can reach the IAP and the ROM library, and OTA commands also act on group-addressed messages. Commands are therefore dispatched by `proto.c`, with a buffer sized for the RX SDU and per-type length checks, and `WRT` is not routed into the WCH handler; this refines A2. The OTA sub-project replaces or hardens the WCH OTA handler (length, address range, unicast only). The integrity claim in section 7 ("WCH's verification step") becomes "a host-driven read-back compare". | code |
 
 ## Notes for later testing (nRF Mesh and test tools)
 
