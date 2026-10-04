@@ -125,12 +125,13 @@ async def main(a):
             seq += 1
             await asyncio.sleep(1.0)
         if a.ask is not None:
-            access = bytes([0xCC, 0xD7, 0x07, a.ask, 0xA4]) + a.node.to_bytes(2, "little")
+            payload = bytes.fromhex(a.payload) if a.payload else b"\xA4" + a.node.to_bytes(2, "little")
+            access = bytes([0xCC, 0xD7, 0x07, a.ask]) + payload
             upper = mc.app_encrypt(appkey, access, seq, a.src, a.node, iv)
             pdu = mc.net_encrypt(keys, iv, ctl=0, ttl=4, seq=seq, src=a.src, dst=a.node,
                                  transport=bytes([0x40 | app_aid]) + upper)
             await client.write_gatt_char(DATA_IN, b"\x00" + pdu, response=a.with_response)
-            print(f"[{now()}] sent vendor WRT ask-status TID 0x{a.ask:02X} to 0x{a.node:04X}, seq {seq}: 00{pdu.hex()}",
+            print(f"[{now()}] sent vendor WRT TID 0x{a.ask:02X} payload {payload.hex()} to 0x{a.node:04X}, seq {seq}",
                   flush=True)
             seq += 1
 
@@ -214,6 +215,7 @@ if __name__ == "__main__":
     p.add_argument("--filter-tries", type=int, default=1)
     p.add_argument("--ask", type=lambda s: int(s, 0), default=None, help="also send WRT ask-status with this TID")
     p.add_argument("--node", type=lambda s: int(s, 0), default=0x0004)
+    p.add_argument("--payload", default=None, help="WRT payload after the TID, hex (default: A4 + node address)")
     p.add_argument("--raw", action="store_true", help="print every notification")
     p.add_argument("--cfg-nonce", choices=["proxy", "network"], default="proxy",
                    help="nonce for proxy configuration messages (spec: proxy)")
