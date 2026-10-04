@@ -98,6 +98,15 @@ class SpikeFeatureTests(unittest.TestCase):
         self.assertIn("tmos_start_task(App_TaskID, SPIKE_PUB_EVT, SPIKE_PUB_PERIOD);", app)
         self.assertIn("// SPIKE: unicast commands arrive as acknowledged WRT", app)
 
+    def test_node_advertises_as_unprovisioned(self):
+        app = read(os.path.join(self.node, "APP", "app.c"))
+        self.assertEqual(app.count("prov_enable(); // SPIKE: advertise as unprovisioned"), 3)
+
+    def test_provisioned_led_is_weact_pb6(self):
+        hdr = read(os.path.join(self.node, "APP", "include", "app_trans_process.h"))
+        self.assertIn("#define LED_PIN    GPIO_Pin_6", hdr)
+        self.assertNotIn("GPIO_Pin_18", hdr)
+
     def test_peripheral_entry_points_are_guarded(self):
         per = read(os.path.join(self.node, "APP", "peripheral.c"))
         self.assertEqual(per.count("    return; // SPIKE: custom peripheral not started"), 3)

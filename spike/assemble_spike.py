@@ -209,6 +209,23 @@ def apply_spike_features(node):
         edit(per, re.escape(header), header + "    return; // SPIKE: custom peripheral not started\n",
              "guard " + header.split("(")[0].split()[-1])
 
+    # WCH's update-capable example never advertises as unprovisioned (it self-provisions from its own phone app).
+    # Call prov_enable() where adv_proxy does: at startup when unprovisioned, after a failed link, after a reset.
+    enable = "prov_enable(); // SPIKE: advertise as unprovisioned (PB-ADV beacon + PB-GATT), as adv_proxy does"
+    edit(app, re.escape('        Peripheral_AdvertData_Privisioned(FALSE);\n    }\n\n    APP_DBG("Mesh initialized");'),
+         '        Peripheral_AdvertData_Privisioned(FALSE);\n        ' + enable + '\n    }\n\n    APP_DBG("Mesh initialized");',
+         "prov_enable at startup")
+    edit(app, re.escape('    if(reason != CLOSE_REASON_SUCCESS)\n        APP_DBG("reason %x", reason);\n}'),
+         '    if(reason != CLOSE_REASON_SUCCESS)\n        APP_DBG("reason %x", reason);\n'
+         '    if(!bt_mesh_is_provisioned())\n    {\n        ' + enable + '\n    }\n}',
+         "prov_enable after failed link")
+    edit(app, re.escape('    APP_DBG("Waiting for privisioning data");\n#if(CONFIG_BLE_MESH_LOW_POWER)\n    bt_mesh_lpn_set(FALSE);'),
+         '    ' + enable + '\n    APP_DBG("Waiting for privisioning data");\n#if(CONFIG_BLE_MESH_LOW_POWER)\n    bt_mesh_lpn_set(FALSE);',
+         "prov_enable after reset")
+    edit(os.path.join(node, "APP", "include", "app_trans_process.h"), re.escape("#define LED_PIN    GPIO_Pin_18"),
+         "#define LED_PIN    GPIO_Pin_6 // SPIKE: WeAct CH584F LED (PB6, active low); on = provisioned",
+         "LED_PIN = PB6")
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Assemble the throwaway Step-0 spike projects")
