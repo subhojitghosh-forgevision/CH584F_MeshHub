@@ -24,6 +24,8 @@ def symbol_value(elf, name, nm=DEFAULT_NM):
 
 
 def check(hexfile, flash_start, flash_end, elf=None, stack_top=None, nm=DEFAULT_NM):
+    if stack_top is not None and elf is None:
+        raise ValueError("stack_top needs an ELF to check against")
     errors = []
     mem = read_hex(hexfile)
     lo, hi = min(mem), max(mem)
@@ -45,6 +47,8 @@ def main(argv=None):
     ap.add_argument("--stack-top", type=lambda s: int(s, 16))
     ap.add_argument("--flash", required=True, help="0xSTART:0xEND (END exclusive)")
     a = ap.parse_args(argv)
+    if a.stack_top is not None and a.elf is None:
+        ap.error("--stack-top needs --elf")
     start, end = (int(x, 16) for x in a.flash.split(":"))
     errors = check(a.hex, start, end, a.elf, a.stack_top)
     name = os.path.basename(a.hex)
@@ -54,7 +58,7 @@ def main(argv=None):
         return 1
     mem = read_hex(a.hex)
     print(f"OK {name}: {len(mem):,} bytes at 0x{min(mem):05X}-0x{max(mem):05X}"
-          + (f", stack top 0x{a.stack_top:08X}" if a.stack_top else ""))
+          + (f", stack top 0x{a.stack_top:08X}" if a.elf and a.stack_top is not None else ""))
     return 0
 
 
