@@ -2,7 +2,7 @@
 
 - **Status:** draft for review. Sections 3–5 were approved in chat on 2026-10-03; sections 6–11 are new for review here.
 - **Date:** 2026-10-03
-- Amended 2026-10-04 after Step 0 spike (spike/REPORT.md): amendments A1–A11.
+- Amended 2026-10-04 after Step 0 spike (spike/REPORT.md): amendments A1–A14.
 - **Scope of this document:** the whole system and the feasibility spike (step 0). Each later
   sub-project (firmware, app core, OTA, history/export) gets its own spec and plan.
 
@@ -91,6 +91,7 @@ The firmware uses the official WCH vendor model from `EVT/EXAM/BLE/MESH/adv_vend
   - `IND` `0xCE` → `ACK` `0xCD`: indication (the client acknowledges)
 - **Access payload:** `opcode (3) | TID (1) | application payload`. The server drops duplicates by (TID, source).
   TIDs follow WCH's ranges: **clients (the app) cycle 0–127** (as `vendor_cli_tid_get()` does) and the server cycles 128–191.
+  **A `CFM` confirms receipt, not execution:** the server confirms a duplicate without running it and keeps only the last (TID, source) pair, in RAM. The app therefore persists its TID counter per network (or starts each session at a random TID), so that a restart never repeats the last TID. The app drops a board's repeated copies by (source, server TID) within a 3 s window; the window is kept short so that a board's server TID restarting after a reboot is not taken as a duplicate.
 - All multi-byte fields are **little-endian**.
 
 The application payload is defined below.
@@ -99,7 +100,7 @@ The application payload is defined below.
 
 | Traffic | Opcode | Semantics |
 |---|---|---|
-| Command or text to **one** board | `WRT` | Acknowledged. The app shows *delivered* or *not delivered*. WCH retransmission is used. The firmware passes `WRT` to the command handler (WCH's example handled only `MSG`). Commands that reset the board (OTA end, factory reset) are never confirmed; the app treats a missing `CFM` for them as expected. |
+| Command or text to **one** board | `WRT` | Acknowledged. The app shows *delivered* (the board confirmed receipt, section 4.1) or *not delivered*. WCH retransmission is used. The firmware passes `WRT` to its own dispatcher in `proto.c`, which has a buffer sized for the RX SDU and per-type length checks. It does not use WCH's `App_trans_model_reveived`, which copies messages without a length check (WCH's example handled only `MSG`). Commands that reset the board (OTA end, factory reset) are never confirmed; the app treats a missing `CFM` for them as expected. |
 | Command or text to **all** (`0xC000`) | `MSG` | Best effort: the WCH send is repeated 5 times. The app shows *sent*. Boards **do not reply** to group-addressed requests. |
 | READING, RULE_EVENT (to `0xC001`) | `MSG` | Periodic or event-driven; loss is tolerated. Sent once (send count 1), not WCH's default of 5 copies 500 ms apart. |
 | INFO, RESULT (reply to a unicast request) | `MSG` | Sent to the requester's address (`ctx->addr`). |
@@ -251,7 +252,7 @@ The exact offsets of the last two areas are fixed in the firmware sub-project sp
 | `settings.c` | Application settings page |
 | `factory.c` | Reads and validates the factory page |
 | `board.c` | LED, BOOT long-press factory reset, error blink |
-| OTA commands | WCH IAP scheme: commands `0xA6`–`0xA9` handled in `app.c` from vendor messages; no separate GATT service |
+| OTA commands | WCH IAP scheme: commands `0xA6`–`0xA9` from vendor messages, no separate GATT service. WCH's handler is hardened or replaced in the OTA sub-project: length checks, address range limited to the update buffer, unicast only. |
 
 ### 6.5 Names
 
@@ -262,10 +263,11 @@ shows names from INFO.
 
 ## 7. OTA (for review)
 
-- **OTA runs over the mesh.** The phone sends WCH's OTA commands (`0xA6` info, `0xA7` write, `0xA8` verify, `0xA9` end) as vendor `WRT` messages through its gateway proxy to any board. No second GATT service is needed (spike T8–T11).
+- **OTA runs over the mesh.** The phone sends WCH's OTA commands (`0xA6` begin, which **erases the update buffer**; `0xA7` write; `0xA8` verify; `0xA9` end) as vendor `WRT` messages through its gateway proxy to any board. No second GATT service is needed (spike T8–T11).
 - The image is written to the update buffer and verified. The IAP installs it on reboot. Provisioning data in DataFlash is preserved.
 - **Throughput:** the spike installed a pre-loaded image; the block transfer over the mesh is measured first in the OTA sub-project.
-- **Integrity:** WCH's verification step plus a version check. **Signed images are an open item** (section 13) that a product requires.
+- **Install guard:** `0xA9` after `0xA6` without a fully written and verified image would make the IAP install an erased image, because it copies without checks. That board is dead until a USB reflash. The board therefore checks the image length and a CRC before `0xA9` switches the image flag, and the app sends `0xA9` only after a passing verify.
+- **Integrity:** WCH's verify (`0xA8`) is a host-driven read-back compare, plus a version check. **Signed images are an open item** (section 13) that a product requires.
 - **Initial flashing:** WCHISPTool, with Object Files 1–4 (JumpIAP, application, IAP, ROM library) plus the board's DataFlash file. **Clear DataFlash** is ticked, and the per-board DataFlash file re-writes the factory page.
 
 ## 8. Android app (for review)
@@ -286,7 +288,7 @@ and `BLUETOOTH_CONNECT` (Android 12+), location for scanning on Android 11 and o
 
 | Package | Responsibility |
 |---|---|
-| `mesh/` | Create and load the network; provision with QR static OOB; resumable configuration; choose the gateway (strongest proxy) and auto-reconnect; proxy filter {`0x0001`, `0xC001`}: WCH nodes accept proxy configuration only with the network nonce (spike F3), so test the chosen Nordic library version first, then patch it or have boards also send READINGs to the hub's unicast address; unsolicited vendor messages are read in `onUnknownPduReceived(src, accessPayload)`; WCH vendor send/receive and TID management |
+| `mesh/` | Create and load the network; provision with QR static OOB; resumable configuration; choose the gateway (strongest proxy) and auto-reconnect; proxy filter {`0x0001`, `0xC001`}: WCH nodes accept proxy configuration only with the network nonce (spike F3), so test the chosen Nordic library version first, then patch it or have boards also send READINGs to the hub's unicast address; unsolicited vendor messages are read in `onUnknownPduReceived(src, accessPayload)`; WCH vendor send/receive and TID management (persisted counter, 3 s duplicate window) |
 | `protocol/` | Kotlin codec for section 4. Must pass the **same test-vector file** as `proto.c`. |
 | `data/` | Room entities: boards, readings, rules, events. History retention is 30 days. |
 | `ota/` | WCH OTA protocol |
@@ -367,6 +369,8 @@ Each sub-project has its own spec, plan and approval.
 | CH584 RAM in the ROM-library layout | Closed: spike S1 PASS (15.5 KB of the 76 KB region) |
 | Nordic library ↔ WCH vendor model interop | Closed: spike S3 PASS (`WRT` → `CFM`) |
 | OTA over the mesh | Install and provisioning retention closed (spike T8–T11); block-transfer throughput open (OTA sub-project) |
+| OTA install of an erased or partial image (`0xA6` erases; the IAP copies without checks) | Device-side length and CRC check before `0xA9` (section 7), OTA sub-project |
+| WCH command/OTA handler memory safety (unbounded copy into 88 bytes; no OTA address-range or unicast checks) | Commands go through `proto.c` (section 4.2); the OTA handler is hardened or replaced in the OTA sub-project |
 | No-OOB claim of unprovisioned boards (spike F1) | The library cannot require OOB; provisioning-window mitigation (section 5.2), tested in the firmware sub-project |
 | Proxy configuration nonce (spike F3) | WCH uses the network nonce; resolved in the app sub-project (section 8.2) |
 | BLE LE Secure Connections absent in the WCH BLE library | Mitigated: security relies on mesh provisioning, not BLE pairing |

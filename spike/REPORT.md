@@ -49,7 +49,7 @@ Every observation, with exact bytes, is in `spike/RESULTS.md`. Findings F1–F3 
 | A10 | 6.5 | S6: the API exists, so the firmware sub-project tries putting the name in the proxy scan response. INFO remains the source of truth. | S6 desk check |
 | A11 | 13 | **Close:** "CH584 RAM" (S1 PASS), "Nordic ↔ WCH vendor interop" (S3 PASS) and "OTA service alongside proxy" (replaced by OTA over the mesh). **Add:** F1 no-OOB claim, F3 proxy-configuration nonce, and OTA block-transfer throughput. | all |
 
-## Final review additions (proposed, awaiting approval)
+## Final review additions (approved 2026-10-04 and applied to the spec)
 
 The whole-branch review found three problems that amendments A1–A11 miss.
 
