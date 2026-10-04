@@ -4,3 +4,6 @@ spike/iap/
 spike/jumpiap/
 spike/build/
 spike/out/
+firmware/out/
+firmware/*/obj/
+firmware/*/.mrs/
