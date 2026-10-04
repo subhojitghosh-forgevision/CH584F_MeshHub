@@ -4,6 +4,7 @@
 
 Layout (system spec 6.2): JumpIAP 0x00000 | node (application) 0x01000 | IAP 0x4D000 | CH584 ROM library 0x4E000
 """
+import glob
 import os
 import re
 import shutil
@@ -44,7 +45,10 @@ def build_all(out_dir, images=IMAGES, toolchain=mrs_build.DEFAULT_TOOLCHAIN):
     os.makedirs(out_dir)
     paths = {}
     for name, (folder, start, end, stack) in images.items():
-        cfg = mrs_build.parse_cproject(os.path.join(HERE, folder))
+        project = os.path.join(HERE, folder)
+        if not os.path.isdir(project):
+            raise FirmwareError(f"{name}: project folder not found: {project}")
+        cfg = mrs_build.parse_cproject(project)
         p = mrs_build.build(cfg, os.path.join(out_dir, name), toolchain, [])
         errors = check_image.check(p["hex"], start, end, elf=p["elf"] if stack else None,
                                    stack_top=STACK_TOP if stack else None)
@@ -79,12 +83,14 @@ def package(hexes, rom_hex, out_hex):
     return out_hex
 
 
-def main():
-    out = os.path.join(HERE, "out")
+def run(out, images=IMAGES, rom_hex=ROM_HEX):
+    """Build, check and package into out. Old packages are deleted first, so a failed run leaves none behind."""
+    for old in glob.glob(os.path.join(out, "meshhub-*.hex")):
+        os.remove(old)
     try:
-        paths = build_all(os.path.join(out, "build"))
+        paths = build_all(os.path.join(out, "build"), images)
         major, minor = read_version()
-        pkg = package({n: p["hex"] for n, p in paths.items()}, ROM_HEX,
+        pkg = package({n: p["hex"] for n, p in paths.items()}, rom_hex,
                       os.path.join(out, f"meshhub-{major}.{minor}.hex"))
     except (FirmwareError, mrs_build.BuildError) as e:
         print(f"FIRMWARE BUILD FAILED: {e}")
@@ -95,6 +101,10 @@ def main():
     mem = read_hex(pkg)
     print(f"{pkg}: {len(mem):,} bytes at 0x{min(mem):05X}-0x{max(mem):05X}")
     return 0
+
+
+def main():
+    return run(os.path.join(HERE, "out"))
 
 
 if __name__ == "__main__":

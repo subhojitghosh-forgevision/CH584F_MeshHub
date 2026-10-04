@@ -53,6 +53,18 @@ class PackageTests(unittest.TestCase):
         self.assertFalse(os.path.exists(marker))
 
 
+class RunTests(unittest.TestCase):
+    def test_failed_build_leaves_no_package_behind(self):
+        """Step 1 keeps version 1.0, so a stale meshhub-1.0.hex would be flashed by mistake after a failed build."""
+        tmp = tempfile.mkdtemp(prefix="fw_run_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        stale = os.path.join(tmp, "meshhub-1.0.hex")
+        open(stale, "w").close()
+        rc = build.run(tmp, images={"node": ("no_such_project", 0x01000, 0x27000, True)})
+        self.assertEqual(rc, 1)
+        self.assertFalse(os.path.exists(stale))
+
+
 class FullBuildTests(unittest.TestCase):
     def test_builds_checks_and_packages_all_images(self):
         tmp = tempfile.mkdtemp(prefix="fw_full_")
