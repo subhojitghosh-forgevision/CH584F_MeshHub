@@ -151,7 +151,29 @@ JUMPIAP = Project(folder="jumpiap", name="meshhub_jumpiap", template="adv_vendor
                          ("RVMSIS", "SRC/RVMSIS"),
                          ("StdPeriphDriver", "SRC/StdPeriphDriver")])
 
-PROJECTS = [JUMPIAP, IAP]
+NODE_SDK = f"{MESH}/adv_vendor_self_provision_with_peripheral"
+
+NODE = Project(
+    folder="node", name="meshhub_node", template="adv_vendor_self_provision_with_peripheral",
+    links=[("Startup", f"{NODE_SDK}/Startup"),
+           ("sdk_hal", "BLE/HAL"),
+           ("LIB", "BLE/LIB"),
+           ("MESH_LIB", f"{MESH}/MESH_LIB"),
+           ("RVMSIS", "SRC/RVMSIS"),
+           ("StdPeriphDriver", "SRC/StdPeriphDriver")],
+    lists={
+        "c.compiler.defs": ["DEBUG=0", "BLE_BUFF_MAX_LEN=251", "LIB_FLASH_BASE_ADDRESSS=0x0004E000", "CH58xBLE_ROM",
+                            "BLE_MEMHEAP_SIZE=5632", "HAL_KEY=1", "CLK_OSC32K=0", "DCDC_ENABLE=1"],
+        "assembler.defs": ["LIB_FLASH_BASE_ADDRESSS=0x0004E000"],
+        "c.compiler.include.paths": [ws("hal/include"), ws("src"), ws("StdPeriphDriver/inc"), ws("RVMSIS"),
+                                     ws("LIB"), ws("MESH_LIB")],
+        "c.linker.libs": ["ISP585", "CH58xMESHROM"],
+        "c.linker.paths": ['"../"', ws("MESH_LIB"), ws("LIB"), ws("StdPeriphDriver")],
+    },
+    sources=[("src", None), ("hal", None), ("sdk_hal", "KEY.c"), ("Startup", None), ("StdPeriphDriver", None),
+             ("RVMSIS", None), ("LIB", None)])
+
+PROJECTS = [JUMPIAP, NODE, IAP]
 
 
 def main():
