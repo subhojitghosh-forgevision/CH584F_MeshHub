@@ -13,7 +13,7 @@
 | T8 | PASS (LED-on after the blinks to confirm) | ~17:28, phone (src 0x0001), Acknowledged unticked, opcode 0C, parameters 02A90400 (OTA end). User: the LED blinked 3 times = version 2 booted after the IAP copied the update slot. Laptop scan afterwards: 54:6C:50:B5:7A:3E advertises PROVISIONED PROXY 0x1828, Network ID 5a9a06c58f8949d3 (same network). |
 | T9 | PASS (laptop) | 17:30:15, laptop proxy client (src 0x7F00) WRT TID 03 payload A4 0400 -> CFM 'CB 03' and MSG 'CF 93 84 0400 00' (x5). Still provisioned after the install; network SEQ continued at 5790 (not reset), so the SEQ store survived the IAP reset. |
 | T10 | PASS (laptop) | 17:30:42, WRT TID 04 payload A6 0400 -> segmented (2 segments) MSG '99 86 0400 00600200 0010 9300 00': image size 0x00026000 (152 KB), block size 0x1000 (4 KB), chip id 0x0093 = ID_CH585 although the chip is a CH584 (ID_CH584 = 0x92): CONFIG.h hard-codes CHIP_ID ID_CH585 (plan report item 4); app.c also builds the high byte as (CHIP_ID<<8)&0xFF, always 0 (SDK bug, harmless for 8-bit IDs). |
-| T11 | | |
+| T11 | PASS (laptop; LED pattern to confirm) | Laptop watcher: board silent at 17:32:34 (unplugged), back at 17:32:55 advertising PROVISIONED PROXY 0x1828, Network ID 5a9a06c58f8949d3. Laptop WRT TID 05 payload A4 0400 -> CFM 'CB 05' and MSG 'CF 84 84 0400 00' (x5); network SEQ continued at 6015. Still provisioned and running v2 after a power cycle. LED: 3 blinks then ON expected (user report pending). |
 
 ## Laptop pre-checks (bleak, 2026-10-04)
 
