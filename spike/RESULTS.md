@@ -9,7 +9,7 @@
 | T4 | PASS (workaround) | nRF Mesh network had no app key; user created 'Application Key 1' (index 0, 52595AE9...84351). Binding/adding it gave 'AppKey Status: Insufficient Resources' (16:16, shown on the Vendor Model page). Cause (code): the SDK example's prov_complete -> APP_NODE_EVT -> cfg_local_net_info() adds its own app key (index 1) and binds it to the vendor model, whose only bind slot (CONFIG_MESH_MOD_KEY_COUNT_DEF 1) is then full - see F2. Workaround applied: 'Application Key 2' = 0023456789ABCDEF0023456789ABCDEF (index 1) added to the node and bound; the Vendor Model 0x07D70000 page lists it under Bound App Keys (16:24). The phone's own key (index 0) cannot be bound with this firmware (F2). |
 | T5 | PASS | 16:31, Acknowledged Message ticked, opcode entered as 6-bit 0C (field shows '0xC0 | 0x0C', so the app wants the 6-bit form; sent as 0xCC), parameters 01A40400 (TID 01, A4 ask status, address 0x0004). 'Received message: CFD7078B84040000' = MSG 0xCF, company 0x07D7, server TID 0x8B (in 0x80-0xBF), 84 status reply, address 0400, status 00. The server's confirm (CFM 0xCB, see T6) was not displayed: the app shows only the latest received message. Reply uses app key index 1 (F2 workaround). |
 | T6 | PASS | 16:33, same opcode 0C and parameters 01A40400 sent again: 'Received message: CBD70701' = CFM 0xCB, company 0x07D7, TID 01, and no new 84 reply (a new one would carry server TID 0x8C, as in T5 the reply arrived after the confirm). Matches app_vendor_model_srv.c vendor_message_srv_write: the handler runs only when the (TID, source) pair changes; the confirm is sent every time. Correction: a WRT is answered with CFM 0xCB, not ACK 0xCD (0xCD is the client's reply to the server's IND 0xCE); spec section 4 lists the pairs swapped. |
-| T7 | | |
+| T7 | PASS via laptop proxy client; NOT displayable in nRF Mesh | Phone: EXCLUSION LIST highlighted (board answered the filter request), WRT TID 0x10/0x11 replies shown, but no READING ever shown - nRF Mesh (Old) only displays a vendor message as the reply to its last vendor send (note N2). Laptop proxy client (see section below): after an EXCLUSION filter, READINGs to 0xC001 arrive every 5 s, e.g. 17:20:50 access cfd7078a01ac08881348 = MSG, TID 0x8A, READING 01, 22.20 C, 50.00 %RH, seq 72; temperature +0.10 C per reading, seq +1. |
 | T8 | | |
 | T9 | | |
 | T10 | | |
@@ -24,9 +24,32 @@
 | Re-advertising after an abandoned provisioning link | PASS | unprovisioned 0x1827 advertising again within ~6 s |
 | Unprovisioned advertising after node reset (prov_reset -> prov_enable fix) | PASS | 15:49 not advertising (phone held the proxy link); 15:51:43-15:52:19 provisioned proxy 0x1828 adverts, alternating with gaps (phone reconnecting); 15:52:25 unprovisioned 0x1827, device UUID 3e7ab5506c5400000000000000000000, OOB info 0000, RSSI -49 dBm. Cause: a reset message, by elimination: no bootloader gap (no reflash), and a power cycle keeps provisioning data. The board was then provisioned again at 15:55 (T3). |
 
+## Laptop proxy client (S4 check, 2026-10-04)
+
+Tools: spike/laptop/ (bleak + Windows CNG AES, no install). The NetKey was given on the command line only.
+
+| Check | Result | Observation |
+|---|---|---|
+| Crypto known-answer tests | PASS | 12/12: FIPS-197 AES, RFC 4493 CMAC, Mesh Profile s1/k2/k4 and Message #1 network PDU encrypt + decrypt |
+| NetKey matches the network | PASS | k3(NetKey) = 5a9a06c58f8949d3 = Network ID in the board's 0x1828 adverts and Secure Network Beacon (flags 0x00, IV index 0) |
+| GATT proxy service | PASS | 0x2ADD write-without-response, 0x2ADE notify, MTU 247 |
+| Two-way vendor messages | PASS | laptop (src 0x7F00) WRT TID 0x20 ask-status to 0x0004 -> CFM 'CB 20' and MSG 'CF AE 84 0400 00' (x5), all NetMIC/TransMIC valid |
+| Set Filter Type with the spec Proxy nonce (0x03) | NO ANSWER | 3 requests over 2 runs: no Filter Status, filter unchanged, no 0xC001 traffic forwarded |
+| Set Filter Type with the network nonce | PASS | 'Proxy Filter Status from 0x0004: type EXCLUSION, list size 0'; the board's status is also encrypted with the network nonce (finding F3) |
+| READINGs through the proxy | PASS | 23 PDUs in 20 s, 0 decrypt failures; one READING every 5 s, each sent 5 times (note N1) |
+
+## Notes (2026-10-04)
+
+| ID | Note |
+|---|---|
+| N1 | Every vendor MSG is sent 5 times at the application layer (app.c vendor_model_srv_send: trans_cnt 0x05, period 500 ms; each copy has a new network SEQ and the same TID). 5x airtime for READINGs whose loss is tolerated. |
+| N2 | Nordic Android library (DefaultNoOperationMessageState): a vendor message becomes VendorModelMessageStatus -> onMeshMessageReceived only while the last message sent to that node was a vendor message; otherwise it goes to MeshStatusCallbacks.onUnknownPduReceived(src, accessPayload). The hub app must parse READINGs there. |
+| N3 | The WCH server answers a WRT 0xCC with CFM 0xCB (not ACK 0xCD); spec section 4 swaps the pairs. |
+
 ## Security finding (2026-10-04)
 
 | ID | Result | Observation |
 |---|---|---|
 | F1 No-OOB provisioning | FINDING | nRF Mesh provisioned the board with authentication 'No OOB' and configuration completed, although the board offers static OOB. In Mesh 1.0 the provisioner chooses the method; MESH_LIB V1.79 exposes no option to require OOB (bt_mesh_prov has static_val/output/input/oob_pub_key only). Any nearby phone can claim an unprovisioned board. Static OOB still authenticates the board to OUR app (anti-impersonation). |
 | F2 Hardcoded self-configured app key | FINDING | spike/node/APP/app.c (from the SDK example): after ANY provisioning, prov_complete schedules APP_NODE_EVT and cfg_local_net_info() calls bt_mesh_app_key_set(net_idx, app_idx 0x0001, self_prov_app_key = 0023456789ABCDEF0023456789ABCDEF) and binds it to the vendor model (keys[0] = 1). Effects: (a) the key is public (SDK source) and identical on every board, so anyone holding the NetKey can read and send vendor messages, including the OTA commands 0xA6-0xA9; (b) with one bind slot per model the provisioner's own app key cannot be bound (T4 'Insufficient Resources'); (c) the node publishes READINGs with that key. Product firmware must remove the self-config and let the hub add/bind keys (spec amendment). |
+| F3 Proxy configuration uses the network nonce | FINDING | MESH_LIB V1.79 decrypts and encrypts proxy configuration messages with the network nonce (0x00, CTL/TTL byte) instead of the Proxy nonce (0x03, Mesh Profile 3.8.5.4). Spec-correct requests are silently ignored. The current Nordic Android library (NetworkLayer, PDU_TYPE_PROXY_CONFIGURATION -> createProxyNonce) sends with the Proxy nonce, so its filter requests would be ignored and group READINGs (0xC001) would not reach the hub. nRF Mesh (Old) did get a Filter Status, so its bundled library evidently differs; to be pinned down in the app sub-project (options: library patch for WCH nodes, or boards also address READINGs to the hub's unicast address). |
